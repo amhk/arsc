@@ -1,0 +1,4 @@
+*.d
+*.o
+arsc
+libarsc.a
