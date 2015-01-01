@@ -34,4 +34,15 @@ void __die(const char *file, unsigned int line, const char *func,
 # define dtohs(x) htons(x)
 #endif
 
+/*
+ * xfunc: wrappers around standard functions.
+ * Program execution is terminated on errors.
+ */
+static inline void *xmalloc(size_t size) {
+	void *p = malloc(size);
+	if (!p)
+		die("malloc");
+	return p;
+}
+
 #endif

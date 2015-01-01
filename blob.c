@@ -1,7 +1,6 @@
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
-
-#include <stdio.h> /* FIXME: rm */
 
 #include "blob.h"
 #include "common.h"
@@ -164,7 +163,7 @@ static void parse_type(struct blob *blob)
 
 void blob_init(struct blob **blob_pp, const void *map, size_t size)
 {
-	struct blob *blob = malloc(sizeof(*blob));
+	struct blob *blob = xmalloc(sizeof(*blob));
 	blob->map = map;
 	blob->size = size;
 	blob->offset = 0;
@@ -192,5 +191,8 @@ void blob_init(struct blob **blob_pp, const void *map, size_t size)
 		}
 	}
 
+	if (blob->offset != blob->size)
+		die("end-of-blob offset %zd does not match blob size %zd",
+		    blob->offset, blob->size);
 	*blob_pp = blob;
 }
