@@ -20,6 +20,13 @@ void __die(const char *file, unsigned int line, const char *func,
 	   const char *fmt, ...) \
 	     __attribute__((__noreturn__, __format__(__printf__, 4, 5)));
 
+#define die_if(cond, fmt, ...) \
+	do { \
+		if ((cond)) { \
+			__die(__FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__); \
+		} \
+	} while (0)
+
 /*
  * Functions to convert from device to host order.
  * Use dtohl for uint32_t, dtohs for uint16_t.
@@ -43,6 +50,20 @@ static inline void *xmalloc(size_t size) {
 	if (!p)
 		die("malloc");
 	return p;
+}
+
+static inline void *xcalloc(size_t n, size_t size) {
+	void *p = calloc(n, size);
+	if (!p)
+		die("calloc");
+	return p;
+}
+
+static inline void *xrealloc(void *p, size_t size) {
+	void *q = realloc(p, size);
+	if (!q)
+		die("realloc");
+	return q;
 }
 
 #endif
