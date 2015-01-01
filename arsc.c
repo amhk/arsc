@@ -19,6 +19,7 @@ int main(int argc, char **argv)
 	fd = map_file(argv[1], &map, &size);
 	blob_init(&blob, map, size);
 	blob_dump(blob);
+	blob_destroy(blob);
 	unmap_file(fd, map, size);
 
 	return 0;

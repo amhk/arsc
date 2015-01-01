@@ -275,6 +275,25 @@ void blob_init(struct blob **blob_pp, const void *map, size_t size)
 	*blob_pp = blob;
 }
 
+void blob_destroy(struct blob *blob)
+{
+	uint32_t i;
+
+	for (i = 0; i < dtohl(blob->header->data.package_count); i++) {
+		const struct package *pkg = &blob->packages[i];
+		size_t j;
+
+		for (j = 0; j < pkg->spec_count; j++) {
+			const struct type_spec *spec = &pkg->specs[j];
+
+			free(spec->types);
+		}
+		free(pkg->specs);
+	}
+	free(blob->packages);
+	free(blob);
+}
+
 void blob_dump(const struct blob *blob)
 {
 	uint32_t i;
