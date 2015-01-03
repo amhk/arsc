@@ -43,7 +43,7 @@ struct arsc_package {
 		uint32_t last_public_type;
 		uint32_t key_strings;
 		uint32_t last_public_key;
-		uint32_t type_id_offset; /* FIXME: include this? */
+		uint32_t type_id_offset;
 	} data;
 };
 
@@ -126,6 +126,23 @@ struct blob {
 	struct package *packages;
 };
 
+/*
+ * Information about ongoing parsing of resources.arsc blob.
+ */
+struct parser_context {
+	const void *map;
+	size_t map_size;
+	size_t offset;
+
+	uint32_t next_package;
+	enum {
+		SP_NONE,
+		SP_VALUES,
+		SP_TYPE_NAMES,
+		SP_RES_NAMES,
+	} next_string_pool;
+};
+
 #define check_alignment(offset, alignment) \
 	do { \
 		if (offset % alignment != 0) \
@@ -140,124 +157,159 @@ static inline uint16_t peek_uint16(const uint8_t *map, size_t offset)
 	return dtohs(*p);
 }
 
-void blob_init(struct blob **blob_pp, const void *map, size_t size)
+static void parse_string_pool(struct parser_context *ctx, struct blob *blob)
 {
-	size_t offset = 0;
+	die_if(!blob->sp_values && ctx->next_string_pool != SP_VALUES,
+	       "offset=%zd: unexpected string pool type %d",
+	       ctx->offset, ctx->next_string_pool);
+
+	const struct arsc_string_pool *pool =
+		(struct arsc_string_pool *)&ctx->map[ctx->offset];
+	struct package *pkg = NULL;
+
+	switch (ctx->next_string_pool) {
+	case SP_VALUES:
+		blob->sp_values = pool;
+		ctx->next_string_pool = SP_NONE;
+		break;
+	case SP_TYPE_NAMES:
+		die_if(ctx->next_package == 0,
+		       "offset=%zd: unexpected type name string pool",
+		       ctx->offset);
+		pkg = &blob->packages[ctx->next_package - 1];
+		die_if(pkg->sp_type_names,
+		       "offset=%zd: unexpected extra type name string pool",
+		       ctx->offset);
+		pkg->sp_type_names = pool;
+		ctx->next_string_pool = SP_RES_NAMES;
+		break;
+	case SP_RES_NAMES:
+		die_if(ctx->next_package == 0,
+		       "offset=%zd: unexpected resource name string pool",
+		       ctx->offset);
+		pkg = &blob->packages[ctx->next_package - 1];
+		die_if(pkg->sp_resource_names,
+		       "offset=%zd: unexpected extra resource name string pool",
+		       ctx->offset);
+		pkg->sp_resource_names = pool;
+		ctx->next_string_pool = SP_NONE;
+		break;
+	case SP_NONE:
+		die("offset=%zd: did not expect string pool", ctx->offset);
+	}
+	ctx->offset += dtohs(pool->header.size);
+}
+
+static void parse_blob_header(struct parser_context *ctx, struct blob *blob)
+{
+	die_if(blob->header, "offset=%zd: extra blob header", ctx->offset);
+
+	blob->header = (struct arsc_header *)&ctx->map[ctx->offset];
+	blob->packages = xcalloc(dtohl(blob->header->data.package_count),
+				 sizeof(struct package));
+	ctx->next_string_pool = SP_VALUES;
+
+	ctx->offset += dtohs(blob->header->header.header_size);
+}
+
+static void parse_package(struct parser_context *ctx, struct blob *blob)
+{
+	die_if(!blob->header,
+	       "offset=%zd: package before blob header", ctx->offset);
+	die_if(ctx->next_package >= dtohl(blob->header->data.package_count),
+	       "offset=%zd: unexpected additional package", ctx->offset);
+
+	const struct arsc_package *a_pkg =
+		(struct arsc_package *)&ctx->map[ctx->offset];
+	struct package *pkg = &blob->packages[ctx->next_package];
+	pkg->package = a_pkg;
+	pkg->sp_type_names = NULL;
+	pkg->sp_resource_names = NULL;
+	pkg->spec_count = 0;
+	pkg->max_spec_count = 2;
+	pkg->specs = xcalloc(pkg->max_spec_count, sizeof(struct type_spec));
+
+	ctx->next_string_pool = SP_TYPE_NAMES;
+	ctx->next_package++;
+	ctx->offset += dtohs(a_pkg->header.header_size);
+}
+
+static void parse_type(struct parser_context *ctx, struct blob *blob)
+{
+	die_if(ctx->next_package == 0,
+	       "offset=%zd: type found before package", ctx->offset);
+	const struct arsc_type *a_type =
+		(struct arsc_type *)&ctx->map[ctx->offset];
+	struct package *pkg = &blob->packages[ctx->next_package - 1];
+	die_if(pkg->spec_count == 0,
+	       "offset=%zd: type found before type spec", ctx->offset);
+	struct type_spec *spec = &pkg->specs[pkg->spec_count - 1];
+
+	if (spec->type_count == spec->max_type_count) {
+		spec->max_type_count *= 2;
+		size_t n = spec->max_type_count * sizeof(struct arsc_type *);
+		spec->types = xrealloc(spec->types, n);
+	}
+	spec->types[spec->type_count++] = a_type;
+
+	ctx->offset += dtohs(a_type->header.size);
+}
+
+static void parse_type_spec(struct parser_context *ctx, struct blob *blob)
+{
+	die_if(ctx->next_package == 0,
+	       "offset=%zd: type spec found before package", ctx->offset);
+	const struct arsc_type_spec *a_spec =
+		(struct arsc_type_spec *)&ctx->map[ctx->offset];
+	struct package *pkg = &blob->packages[ctx->next_package - 1];
+
+	if (pkg->spec_count == pkg->max_spec_count) {
+		pkg->max_spec_count *= 2;
+		size_t n = pkg->max_spec_count * sizeof(struct type_spec);
+		pkg->specs = xrealloc(pkg->specs, n);
+	}
+	struct type_spec *spec = &pkg->specs[pkg->spec_count++];
+	spec->spec = a_spec;
+	spec->type_count = 0;
+	spec->max_type_count = 2;
+	spec->types = xcalloc(spec->max_type_count, sizeof(struct arsc_type *));
+
+	ctx->offset += dtohs(a_spec->header.size);
+}
+
+void blob_init(struct blob **blob_pp, const void *map, size_t map_size)
+{
 	struct blob *blob = xmalloc(sizeof(*blob));
 	blob->header = NULL;
 	blob->sp_values = NULL;
 	blob->packages = NULL;
 
-	int current_package = -1;
-	enum {
-		NONE,
-		VALUES,
-		TYPE_NAMES,
-		RES_NAMES,
-	} next_string_pool = NONE;
+	struct parser_context ctx = {
+		.map = map,
+		.map_size = map_size,
+		.offset = 0,
+		.next_package = 0,
+		.next_string_pool = SP_NONE,
+	};
 
 	/* parse resource.arsc blob */
-	while (offset < size) {
-		uint16_t type = peek_uint16(map, offset);
+	while (ctx.offset < ctx.map_size) {
+		uint16_t type = peek_uint16(ctx.map, ctx.offset);
 		switch (type) {
 		case 0x0001: /* string pool */
-			{
-				die_if(!blob->sp_values && next_string_pool != VALUES,
-				       "unexpected string pool type at offset %zd", offset);
-
-				const struct arsc_string_pool *pool = (struct arsc_string_pool *)&map[offset];
-				switch (next_string_pool) {
-				case VALUES:
-					blob->sp_values = pool;
-					next_string_pool = NONE;
-					break;
-				case TYPE_NAMES:
-					die_if(current_package < 0, "type name string pool found before package at offset %zd", offset);
-					{
-						struct package *pkg = &blob->packages[current_package];
-						die_if(pkg->sp_type_names, "extra type name string pool found at offset %zd", offset);
-						pkg->sp_type_names = pool;
-					}
-					next_string_pool = RES_NAMES;
-					break;
-				case RES_NAMES:
-					die_if(current_package < 0, "resource name string pool fround before package at offset %zd", offset);
-					{
-						struct package *pkg = &blob->packages[current_package];
-						die_if(pkg->sp_resource_names, "extra resource name string pool found at offset %zd", offset);
-						pkg->sp_resource_names = pool;
-					}
-					next_string_pool = NONE;
-					break;
-				case NONE:
-					die("did not expect string pool at offset %zd\n", offset);
-				}
-				offset += dtohs(pool->header.size);
-			}
+			parse_string_pool(&ctx, blob);
 			break;
 		case 0x0002: /* blob header */
-			die_if(blob->header, "extra blob header at offset %zd", offset);
-
-			blob->header = (struct arsc_header *)&map[offset];
-			blob->packages = xcalloc(dtohl(blob->header->data.package_count), sizeof(struct package));
-			next_string_pool = VALUES;
-
-			offset += dtohs(blob->header->header.header_size);
+			parse_blob_header(&ctx, blob);
 			break;
 		case 0x0200: /* package */
-			{
-				current_package++;
-				die_if(!blob->header, "found package before blob header at offset %zd", offset);
-				die_if((uint32_t)current_package > dtohl(blob->header->data.package_count), "found additional package after expected package count %zd", dtohl(blob->header->data.package_count));
-
-				const struct arsc_package *a_pkg = (struct arsc_package *)&map[offset];
-				struct package *pkg = &blob->packages[current_package];
-				pkg->package = a_pkg;
-				pkg->sp_type_names = NULL;
-				pkg->sp_resource_names = NULL;
-				pkg->spec_count = 0;
-				pkg->max_spec_count = 2;
-				pkg->specs = xcalloc(pkg->max_spec_count, sizeof(struct type_spec));
-
-				next_string_pool = TYPE_NAMES;
-				offset += dtohs(a_pkg->header.header_size);
-			}
+			parse_package(&ctx, blob);
 			break;
 		case 0x0201: /* type */
-			{
-				die_if(current_package < 0, "type found before package at offset %zd", offset);
-				const struct arsc_type *a_type = (struct arsc_type *)&map[offset];
-				struct package *pkg = &blob->packages[current_package];
-				die_if(pkg->spec_count == 0, "type found before type spec at offset %zd", offset);
-				struct type_spec *spec = &pkg->specs[pkg->spec_count - 1];
-
-				if (spec->type_count == spec->max_type_count) {
-					spec->max_type_count *= 2;
-					spec->types = xrealloc(spec->types, spec->max_type_count * sizeof(struct arsc_type *));
-				}
-				spec->types[spec->type_count++] = a_type;
-
-				offset += dtohs(a_type->header.size);
-			}
+			parse_type(&ctx, blob);
 			break;
 		case 0x0202: /* type spec */
-			{
-				die_if(current_package < 0, "type spec found before package at offset %zd", offset);
-				const struct arsc_type_spec *a_spec = (struct arsc_type_spec *)&map[offset];
-				struct package *pkg = &blob->packages[current_package];
-
-				if (pkg->spec_count == pkg->max_spec_count) {
-					pkg->max_spec_count *= 2;
-					pkg->specs = xrealloc(pkg->specs, pkg->max_spec_count * sizeof(struct type_spec));
-				}
-				struct type_spec *spec = &pkg->specs[pkg->spec_count++];
-				spec->spec = a_spec;
-				spec->type_count = 0;
-				spec->max_type_count = 2;
-				spec->types = xcalloc(spec->max_type_count, sizeof(struct arsc_type *));
-
-				offset += dtohs(a_spec->header.size);
-			}
+			parse_type_spec(&ctx, blob);
 			break;
 		default:
 			die("unknown type 0x%04x", type);
@@ -265,12 +317,12 @@ void blob_init(struct blob **blob_pp, const void *map, size_t size)
 	}
 
 	/* check invariants */
-	die_if(offset != size,
-	       "end-of-blob offset %zd does not match blob size %zd",
-	       offset, size);
-	die_if((uint32_t)current_package + 1 != dtohl(blob->header->data.package_count),
-	       "end-of-blob package count %d does not match expected package count %d",
-	       current_package + 1, dtohl(blob->header->data.package_count));
+	die_if(ctx.offset != ctx.map_size,
+	       "offset=%zd, blob size=%zd: parsing did not end at end of blob",
+	       ctx.offset, ctx.map_size);
+	die_if(ctx.next_package != dtohl(blob->header->data.package_count),
+	       "package count %d does not match expected package count %d",
+	       ctx.next_package, dtohl(blob->header->data.package_count));
 
 	*blob_pp = blob;
 }
@@ -298,7 +350,8 @@ void blob_dump(const struct blob *blob)
 {
 	uint32_t i;
 
-	printf("header: package_count=%d\n", dtohl(blob->header->data.package_count));
+	printf("header: package_count=%d\n",
+	       dtohl(blob->header->data.package_count));
 	printf("string pool (resource values): string_count=%d\n",
 	       dtohl(blob->sp_values->data.string_count));
 	for (i = 0; i < dtohl(blob->header->data.package_count); i++) {
@@ -320,7 +373,8 @@ void blob_dump(const struct blob *blob)
 			for (k = 0; k < spec->type_count; k++) {
 				const struct arsc_type *type = spec->types[k];
 
-				printf("type: id=0x%02x\n", dtohs(type->data.id));
+				printf("type: id=0x%02x\n",
+				       dtohs(type->data.id));
 			}
 		}
 	}
