@@ -41,7 +41,11 @@ $(libarsc): $(libarsc_objects)
 $(binary): $(binary).o $(LIBS)
 	$(QUIET_LD)$(LD) $(LDFLAGS) -o $@ $^
 
+test:
+	$(MAKE) -C t all
+
 clean:
+	$(MAKE) -C t clean
 	$(RM) $(deps)
 	$(RM) $(objects)
 	$(RM) $(LIBS)
