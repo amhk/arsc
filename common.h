@@ -1,12 +1,7 @@
 #ifndef ARSC_COMMON_H
 #define ARSC_COMMON_H
+#include <stdlib.h>
 #include <unistd.h>
-
-/*
- * map_file: mmap a file
- */
-int map_file(const char *path, void **out_p, size_t *size);
-void unmap_file(int fd, void *map, size_t size);
 
 /*
  * die: abort program with minimal stack trace on stderr

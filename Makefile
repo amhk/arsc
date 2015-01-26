@@ -1,12 +1,14 @@
 libarsc_objects :=
 libarsc_objects += blob.o
 libarsc_objects += common.o
+libarsc_objects += filemap.o
 
 binary := arsc
 
 headers :=
 headers += blob.h
 headers += common.h
+headers += filemap.h
 
 libarsc = libarsc.a
 objects := $(binary).o $(libarsc_objects)

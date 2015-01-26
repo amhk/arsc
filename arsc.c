@@ -3,6 +3,7 @@
 
 #include "blob.h"
 #include "common.h"
+#include "filemap.h"
 
 int main(int argc, char **argv)
 {
