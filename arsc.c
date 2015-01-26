@@ -7,9 +7,7 @@
 
 int main(int argc, char **argv)
 {
-	int fd = 0;
-	void *map;
-	size_t size;
+	struct mapped_file map;
 	struct blob *blob;
 
 	if (argc < 2) {
@@ -17,11 +15,11 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	fd = map_file(argv[1], &map, &size);
-	blob_init(&blob, map, size);
+	map_file(argv[1], &map);
+	blob_init(&blob, map.data, map.data_size);
 	blob_dump(blob);
 	blob_destroy(blob);
-	unmap_file(fd, map, size);
+	unmap_file(&map);
 
 	return 0;
 }
