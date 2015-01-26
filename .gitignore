@@ -2,3 +2,5 @@
 *.o
 arsc
 libarsc.a
+t/*.apk
+t/*.arsc
