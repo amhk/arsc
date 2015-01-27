@@ -1,5 +1,7 @@
 libarsc_objects :=
 libarsc_objects += blob.o
+libarsc_objects += cmds/dump.o
+libarsc_objects += cmds/test.o
 libarsc_objects += common.o
 libarsc_objects += filemap.o
 libarsc_objects += options.o
@@ -8,6 +10,7 @@ binary := arsc
 
 headers :=
 headers += blob.h
+headers += cmds.h
 headers += common.h
 headers += filemap.h
 headers += options.h
@@ -17,7 +20,7 @@ objects := $(binary).o $(libarsc_objects)
 deps := $(objects:.o=.d)
 
 CC := clang
-CFLAGS := -Wall -Wextra -ggdb -O0
+CFLAGS := -Wall -Wextra -I. -ggdb -O0
 CFLAGS += -DDEBUG
 
 LD := $(CC)
