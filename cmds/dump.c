@@ -3,8 +3,19 @@
 #include "arsc.h"
 #include "blob.h"
 #include "common.h"
+#include "config.h"
 #include "filemap.h"
 #include "options.h"
+
+static void dump_type(const struct arsc_type *type)
+{
+	char c[CONFIG_LEN];
+
+	config_to_string(&type->data.config, c);
+	printf("type: id=0x%02x entry_count=%d entries_start=0x%02x config=%s\n",
+	       dtohs(type->data.id), dtohl(type->data.entry_count),
+	       dtohl(type->data.entries_start), c);
+}
 
 static void dump(const struct blob *blob)
 {
@@ -32,9 +43,7 @@ static void dump(const struct blob *blob)
 			       dtohs(spec->spec->data.id), spec->type_count);
 			for (k = 0; k < spec->type_count; k++) {
 				const struct arsc_type *type = spec->types[k];
-
-				printf("type: id=0x%02x\n",
-				       dtohs(type->data.id));
+				dump_type(type);
 			}
 		}
 	}

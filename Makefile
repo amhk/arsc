@@ -3,6 +3,7 @@ libarsc_objects += blob.o
 libarsc_objects += cmds/dump.o
 libarsc_objects += cmds/test.o
 libarsc_objects += common.o
+libarsc_objects += config.o
 libarsc_objects += filemap.o
 libarsc_objects += options.o
 
@@ -13,6 +14,7 @@ headers += arsc.h
 headers += blob.h
 headers += cmds.h
 headers += common.h
+headers += config.h
 headers += filemap.h
 headers += options.h
 

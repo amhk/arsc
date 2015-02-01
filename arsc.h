@@ -65,14 +65,14 @@ struct arsc_config {
 	uint16_t language;
 	uint16_t country;
 
-	uint16_t orientation;
-	uint16_t touchscreen;
+	uint8_t orientation;
+	uint8_t touchscreen;
 	uint16_t density;
 
-	uint16_t keyboard;
-	uint16_t navigation;
-	uint16_t input_flags;
-	uint16_t input_pad0;
+	uint8_t keyboard;
+	uint8_t navigation;
+	uint8_t input_flags;
+	uint8_t input_pad0;
 
 	uint16_t screen_width;
 	uint16_t screen_height;
@@ -80,8 +80,8 @@ struct arsc_config {
 	uint16_t sdk_version;
 	uint16_t minor_version;
 
-	uint16_t screen_layout;
-	uint16_t ui_mode;
+	uint8_t screen_layout;
+	uint8_t ui_mode;
 	uint16_t smallest_screen_width_dp;
 
 	uint16_t screen_width_dp;
