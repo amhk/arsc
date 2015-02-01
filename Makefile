@@ -9,6 +9,7 @@ libarsc_objects += options.o
 binary := arsc
 
 headers :=
+headers += arsc.h
 headers += blob.h
 headers += cmds.h
 headers += common.h
